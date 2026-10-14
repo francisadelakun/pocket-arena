@@ -1,0 +1,6 @@
+# Netlify Redirects Configuration for Pocket Arena
+# If hosting server.py on Render, replace with your Render URL:
+# /api/*  https://pocket-arena.onrender.com/api/:splat  200
+
+# SPA fallback
+/*  /index.html  200

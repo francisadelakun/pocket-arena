@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full w-full bg-slate-950 text-slate-100 select-none overflow-hidden">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>POCKET ARENA — Fight for Survival</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230B0D17'/><text y='75' x='10' font-size='72'>🗝️</text></svg>">
+
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Outfit:wght@400;600;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Outfit', 'Fredoka', 'sans-serif'],
+            body: ['Fredoka', 'sans-serif'],
+            mono: ['Space Grotesk', 'monospace']
+          },
+          colors: {
+            tactical: {
+              accent: '#00F0FF',
+              danger: '#FF2A6D',
+              warning: '#FFB800',
+              shield: '#05D9E8',
+              health: '#01F70E',
+              dark: '#0B0D17',
+              surface: '#121829',
+              gold: '#FFD700'
+            }
+          },
+          boxShadow: {
+            'neon-blue': '0 0 20px rgba(0, 240, 255, 0.45)',
+            'neon-red': '0 0 20px rgba(255, 42, 109, 0.5)',
+            'neon-green': '0 0 20px rgba(1, 247, 14, 0.45)',
+            'neon-amber': '0 0 20px rgba(255, 184, 0, 0.5)',
+            'neon-gold': '0 0 20px rgba(255, 215, 0, 0.6)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Firebase v9 Compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <!-- PeerJS WebRTC P2P DataChannel SDK (Global cross-network zero-config multiplayer) -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Fredoka', sans-serif;
+      touch-action: none;
+      background: #060810;
+    }
+    .font-arcade { font-family: 'Outfit', sans-serif; letter-spacing: -0.02em; }
+    .font-code { font-family: 'Space Grotesk', monospace; }
+    #game-canvas { cursor: crosshair; touch-action: none; display: block; }
+    .crt-overlay {
+      pointer-events: none;
+      background: radial-gradient(circle, transparent 70%, rgba(0,0,0,0.75) 100%),
+                  repeating-linear-gradient(0deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 2px);
+    }
+    .arcade-btn-active:active { transform: scale(0.92); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
+    @keyframes keyPulse { 0%,100%{box-shadow:0 0 10px #FFD700;} 50%{box-shadow:0 0 25px #FFD700, 0 0 50px #FFD700;} }
+    .key-pulse { animation: keyPulse 1s ease-in-out infinite; }
+    @keyframes vaultReady { 0%,100%{border-color:#00F0FF44;} 50%{border-color:#00F0FF;} }
+    .vault-ready { animation: vaultReady 0.8s ease-in-out infinite; }
+
+    /* ERGONOMIC FIXED JOYSTICK ANCHORS */
+    #joystick-move-container {
+      position: absolute; bottom: 30px; left: 30px;
+      width: 130px; height: 130px;
+      z-index: 35; pointer-events: auto; touch-action: none;
+    }
+    #joystick-aim-container {
+      position: absolute; bottom: 30px; right: 30px;
+      width: 130px; height: 130px;
+      z-index: 35; pointer-events: auto; touch-action: none;
+    }
+    #btn-bomb-container {
+      position: absolute; bottom: 175px; right: 35px;
+      z-index: 36; pointer-events: auto;
+    }
+  </style>
+</head>
+<body class="h-full w-full flex flex-col justify-between text-slate-100 overflow-hidden">
+
+  <!-- ================= TOP HEADER BAR ================= -->
+  <header class="w-full bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-3 py-1.5 z-40 flex items-center justify-between shadow-lg shrink-0">
+    <div class="flex items-center space-x-2">
+      <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 via-yellow-500 to-orange-400 flex items-center justify-center font-black text-sm shadow-neon-amber">
+        🗝️
+      </div>
+      <div>
+        <h1 class="text-base font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-300 to-rose-400 font-arcade leading-tight">
+          POCKET ARENA <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-code font-bold uppercase">FIGHT FOR SURVIVAL</span>
+        </h1>
+        <p class="text-[9px] text-slate-400 font-code tracking-widest uppercase flex items-center gap-1">
+          <span id="header-net-pill" class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+          <span id="header-net-status">READY</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- Active Room Badge & Controls -->
+    <div class="flex items-center space-x-1.5">
+      <div id="header-room-badge" class="hidden items-center bg-slate-800/90 border border-amber-700/50 rounded-xl px-2.5 py-0.5 font-code text-xs">
+        <span class="text-slate-400 mr-1 text-[10px]">CODE:</span>
+        <span id="header-room-code" class="text-amber-400 font-black tracking-widest text-sm">----</span>
+      </div>
+
+      <!-- Sound Toggle -->
+      <button id="btn-sound-toggle" title="Toggle Audio" class="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-700 transition">
+        <span id="icon-sound">🔊</span>
+      </button>
+
+      <!-- Firebase / Settings Trigger -->
+      <button id="btn-open-settings" title="Settings" class="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-700 transition">
+        ⚙️
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= MAIN VIEWPORT CONTAINER ================= -->
+  <main class="relative flex-1 w-full h-full flex items-center justify-center overflow-hidden">
+
+    <!-- 1. LANDING SCREEN -->
+    <section id="screen-landing" class="w-full max-w-md flex flex-col items-center justify-center space-y-4 p-4 animate-fade-in z-20">
+      <div class="w-full bg-slate-900/95 border-2 border-slate-800 rounded-3xl p-5 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+        <div class="absolute -top-12 -right-12 w-32 h-32 bg-amber-500/20 rounded-full blur-2xl pointer-events-none"></div>
+        <div class="absolute -bottom-12 -left-12 w-32 h-32 bg-rose-500/20 rounded-full blur-2xl pointer-events-none"></div>
+
+        <div class="text-center space-y-1 mb-4">
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold tracking-wider uppercase mb-1">
+            🗝️ Tactical Heist &amp; Extraction
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-black font-arcade text-white tracking-tight">
+            FIGHT FOR <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-rose-400">SURVIVAL</span>
+          </h2>
+          <p class="text-[11px] text-slate-400">
+            Grab keys from the central vault. Deposit 2 into your Home Base Vault to win!
+          </p>
+        </div>
+
+        <!-- Identity / Avatar Selector -->
+        <div class="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3 mb-4 flex items-center justify-between">
+          <div class="flex items-center space-x-2.5">
+            <button id="btn-cycle-avatar" title="Click to change avatar" class="w-10 h-10 rounded-xl bg-slate-800 border-2 border-amber-400/60 flex items-center justify-center text-xl shadow-md hover:scale-105 active:scale-95 transition">
+              <span id="player-avatar-preview">🪖</span>
+            </button>
+            <div>
+              <div class="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Operative Call-Sign</div>
+              <input id="input-player-name" type="text" maxlength="18" placeholder="AutoName" class="bg-transparent font-bold text-white text-xs outline-none focus:text-amber-300 w-36 sm:w-44 transition">
+            </div>
+          </div>
+          <button id="btn-random-name" title="Randomize Name" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded-lg border border-slate-700 font-mono transition">
+            🎲
+          </button>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="space-y-2.5">
+          <button id="btn-create-room" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-600 via-yellow-500 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-slate-950 font-black text-base tracking-wider uppercase font-arcade shadow-lg shadow-amber-950 border-b-4 border-amber-800 arcade-btn-active transition flex items-center justify-center gap-2">
+            <span>👑</span> DEPLOY SQUAD (HOST)
+          </button>
+
+          <div class="relative flex py-1 items-center">
+            <div class="flex-grow border-t border-slate-800"></div>
+            <span class="flex-shrink mx-2 text-slate-500 text-[10px] font-mono font-bold uppercase tracking-widest">OR ENTER ROOM CODE</span>
+            <div class="flex-grow border-t border-slate-800"></div>
+          </div>
+
+          <div class="flex space-x-2">
+            <input id="input-room-code" type="text" maxlength="6" placeholder="CODE" class="flex-1 bg-slate-950/80 border-2 border-slate-800 focus:border-amber-400 rounded-2xl px-3 py-2 text-center text-lg font-black font-code uppercase tracking-widest text-amber-300 placeholder-slate-600 outline-none transition">
+            <button id="btn-join-room" class="px-5 py-2 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm tracking-wider uppercase font-arcade border-b-4 border-rose-800 arcade-btn-active shadow-lg shadow-rose-950 transition flex items-center justify-center">
+              JOIN
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Controls Guide -->
+      <div class="w-full text-center text-[10px] space-y-1 font-code bg-slate-900/80 border border-slate-800 rounded-2xl p-2.5 shadow-lg">
+        <div class="text-amber-300 font-bold flex items-center justify-center gap-1.5 flex-wrap">
+          <span>💻 PC:</span>
+          <span class="text-white bg-slate-800 px-1.5 py-0.5 rounded">WASD</span>
+          <span>Move</span>
+          <span>•</span>
+          <span class="text-white bg-slate-800 px-1.5 py-0.5 rounded">Space</span>
+          <span>or</span>
+          <span class="text-white bg-slate-800 px-1.5 py-0.5 rounded">L-Click</span>
+          <span>or</span>
+          <span class="text-white bg-slate-800 px-1.5 py-0.5 rounded">J</span>
+          <span>Shoot</span>
+          <span>•</span>
+          <span class="text-white bg-slate-800 px-1.5 py-0.5 rounded">B</span>
+          <span>Bomb</span>
+        </div>
+        <div class="text-slate-400 text-[9px] flex items-center justify-center gap-2">
+          <span>📱 Mobile: Left Stick Move</span>
+          <span>•</span>
+          <span>Right Stick Aim &amp; Auto-Fire</span>
+          <span>•</span>
+          <span>Bomb Button</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. LOBBY SCREEN -->
+    <section id="screen-lobby" class="hidden w-full max-w-md flex flex-col items-center justify-center space-y-3 p-4 animate-fade-in z-20">
+      <div class="w-full bg-slate-900/95 border-2 border-slate-800 rounded-3xl p-5 shadow-2xl backdrop-blur-xl">
+        <div class="text-center pb-3 border-b border-slate-800">
+          <span class="text-[10px] font-bold tracking-widest text-slate-400 uppercase font-code">SQUAD ROOM CODE</span>
+          <div class="flex items-center justify-center space-x-2 mt-1">
+            <div id="lobby-code-display" class="text-3xl sm:text-4xl font-black tracking-widest text-amber-400 font-code bg-slate-950/80 px-5 py-1.5 rounded-2xl border-2 border-amber-500/50 shadow-inner shadow-amber-900/30">
+              ----
+            </div>
+            <!-- Prominent Copy Code Button -->
+            <button id="btn-copy-room-code" title="Copy 4-Letter Code" class="px-3 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs font-arcade rounded-2xl border border-amber-300 shadow-md active:scale-95 transition flex items-center gap-1">
+              <span>📋</span> Copy Code
+            </button>
+            <!-- Copy Link Button -->
+            <button id="btn-copy-room-link" title="Copy Invite Link" class="p-2.5 bg-slate-800 hover:bg-slate-700 active:scale-90 border border-slate-700 rounded-2xl text-slate-200 transition">
+              🔗
+            </button>
+          </div>
+          <p id="copy-status-text" class="text-[10px] text-amber-400 font-mono mt-1 h-3">Share this code with your squad!</p>
+
+          <!-- Mobile Hotspot Direct URL Box -->
+          <div class="mt-2.5 p-2 bg-slate-950/90 border border-slate-800 rounded-2xl text-center">
+            <div class="text-[9px] text-slate-400 font-code font-bold uppercase tracking-wider flex items-center justify-center gap-1">
+              <span>📱</span> Hotspot / Mobile Connection Link
+            </div>
+            <div class="flex items-center justify-center gap-1.5 mt-1">
+              <span id="mobile-hotspot-url" class="text-xs font-mono font-bold text-amber-300 select-all">http://10.135.161.61:8000/</span>
+              <button id="btn-copy-mobile-url" title="Copy Mobile Hotspot Link" class="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[10px] text-amber-300 rounded-lg font-mono font-bold active:scale-95 transition">
+                📋 Copy
+              </button>
+            </div>
+            <div class="text-[8px] text-slate-400 mt-0.5">Use this IP link on your phone browser when connected to hotspot</div>
+          </div>
+        </div>
+
+        <!-- Objective Reminder -->
+        <div class="py-2 my-1 bg-amber-500/5 border border-amber-500/20 rounded-2xl text-center">
+          <div class="text-[10px] text-amber-300 font-code font-bold uppercase">🗝️ Objective: First to deposit 2 keys into their Home Vault wins!</div>
+        </div>
+
+        <div class="py-3 space-y-2">
+          <div class="flex justify-between items-center text-[11px] font-bold text-slate-400 uppercase px-1">
+            <span>Operatives in Briefing</span>
+            <span id="lobby-player-count" class="font-code text-amber-400">0 / 4</span>
+          </div>
+
+          <div id="lobby-players-list" class="space-y-1.5">
+            <!-- Dynamic Player Cards rendered via JS -->
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-800 space-y-2">
+          <button id="btn-start-game" class="hidden w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-base tracking-wider uppercase font-arcade shadow-lg shadow-emerald-950 border-b-4 border-emerald-800 arcade-btn-active transition">
+            🚀 START OPERATION
+          </button>
+
+          <button id="btn-add-dummy-bot" class="hidden w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider font-code transition flex items-center justify-center gap-1.5">
+            <span>🤖</span> Add AI Operative
+          </button>
+
+          <div id="lobby-waiting-notice" class="w-full py-2.5 bg-slate-950/80 border border-slate-800 rounded-2xl text-center text-xs text-slate-400 font-code animate-pulse">
+            ⏳ Waiting for squad leader to commence operation...
+          </div>
+
+          <button id="btn-leave-lobby" class="w-full py-1 text-xs text-slate-500 hover:text-rose-400 font-bold uppercase tracking-wider transition">
+            Abandon Squad
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. IN-PROGRESS / LOCKOUT SCREEN -->
+    <section id="screen-locked" class="hidden w-full max-w-md flex flex-col items-center justify-center p-6 text-center space-y-3 bg-slate-900/90 border-2 border-rose-900/50 rounded-3xl backdrop-blur-xl z-20">
+      <div class="text-4xl">🚫</div>
+      <h2 class="text-xl font-black font-arcade text-rose-400">OPERATION ACTIVE</h2>
+      <p class="text-xs text-slate-300 leading-relaxed font-code">
+        Heist in progress. Operatives will be briefed on the next extraction.
+      </p>
+      <button id="btn-back-to-landing" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider font-arcade border border-slate-700 transition">
+        Return to Barracks
+      </button>
+    </section>
+
+    <!-- 4. ACTIVE GAMEPLAY ARENA SCREEN -->
+    <section id="screen-game" class="hidden absolute inset-0 w-full h-full flex flex-col items-center justify-between z-10 overflow-hidden">
+
+      <!-- FLOATING TOP HUD -->
+      <div class="absolute top-2 left-2 right-2 flex items-start justify-between z-30 pointer-events-none">
+
+        <!-- Left: Player Vitality Bars -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-2 shadow-xl backdrop-blur-md pointer-events-auto w-44 sm:w-52 space-y-1">
+          <!-- Health Bar -->
+          <div>
+            <div class="flex justify-between text-[9px] font-bold uppercase font-code">
+              <span class="text-emerald-400 flex items-center gap-1"><span>❤️</span> HP</span>
+              <span id="hud-hp-text" class="text-white">100 / 100</span>
+            </div>
+            <div class="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+              <div id="hud-hp-bar" class="h-full bg-gradient-to-r from-emerald-500 to-green-400 transition-all duration-100" style="width: 100%;"></div>
+            </div>
+          </div>
+          <!-- Shield Bar -->
+          <div>
+            <div class="flex justify-between text-[9px] font-bold uppercase font-code">
+              <span class="text-cyan-400 flex items-center gap-1"><span>🛡️</span> SHIELD</span>
+              <span id="hud-shield-text" class="text-white">50 / 50</span>
+            </div>
+            <div class="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+              <div id="hud-shield-bar" class="h-full bg-cyan-400 transition-all duration-100 shadow-neon-blue" style="width: 100%;"></div>
+            </div>
+          </div>
+          <!-- Key Count -->
+          <div class="flex items-center justify-between text-[9px] font-bold font-code">
+            <span class="text-amber-400">🗝️ KEYS HELD</span>
+            <span id="hud-keys-held" class="text-white font-black">0</span>
+          </div>
+          <!-- Vault Deposits -->
+          <div class="flex items-center justify-between text-[9px] font-bold font-code">
+            <span class="text-amber-300">🏛️ VAULT DEPOSITS</span>
+            <span id="hud-vault-deposits" class="text-amber-400 font-black">0 / 2</span>
+          </div>
+        </div>
+
+        <!-- Center: Room Code + Timer + Killfeed -->
+        <div class="flex flex-col items-center pointer-events-auto">
+          <!-- Room Code Badge -->
+          <div class="bg-slate-900/90 border border-amber-500/40 rounded-xl px-3 py-0.5 mb-1 shadow-xl backdrop-blur-md">
+            <span id="hud-room-code" class="text-sm font-black font-code text-amber-400 tracking-widest">----</span>
+          </div>
+          <!-- Timer -->
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1 shadow-xl backdrop-blur-md flex items-center space-x-1.5">
+            <span class="text-xs">⏱️</span>
+            <span id="hud-timer" class="text-xs sm:text-sm font-black font-code text-white tracking-widest">02:00</span>
+          </div>
+          <div id="hud-killfeed" class="mt-1 flex flex-col items-center space-y-1 text-xs font-code max-w-xs">
+          </div>
+        </div>
+
+        <!-- Right: Equipped Weapon Card + Prominent QUIT GAME button -->
+        <div class="flex flex-col items-end space-y-1.5 pointer-events-auto">
+          <!-- Equipped Weapon Card -->
+          <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-2 shadow-xl backdrop-blur-md w-32 sm:w-40 text-right">
+            <div class="flex items-center justify-end space-x-1.5">
+              <div class="text-right">
+                <div id="hud-weapon-name" class="text-[10px] font-black uppercase text-amber-400 font-arcade">PISTOL</div>
+                <div class="text-[8px] text-slate-400 uppercase font-code">TIER 1</div>
+              </div>
+              <div id="hud-weapon-icon" class="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-lg">🔫</div>
+            </div>
+            <div class="mt-0.5 flex items-baseline justify-end space-x-1 font-code font-bold">
+              <span id="hud-ammo-current" class="text-sm text-white">∞</span>
+              <span class="text-[10px] text-slate-500">/</span>
+              <span id="hud-ammo-reserve" class="text-[10px] text-slate-400">∞</span>
+            </div>
+          </div>
+
+          <!-- Visible QUIT GAME Button -->
+          <button id="btn-quit-game" class="w-full py-1.5 px-3 bg-rose-600/30 hover:bg-rose-600 border border-rose-500/50 hover:border-rose-400 text-rose-300 hover:text-white rounded-xl text-[11px] font-black uppercase font-arcade flex items-center justify-center gap-1.5 transition shadow-lg active:scale-95">
+            <span>🚪</span> QUIT GAME
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Scoreboard strip (top-center, below main HUD) -->
+      <div id="hud-scoreboard" class="absolute top-20 left-1/2 -translate-x-1/2 flex gap-2 z-30 pointer-events-none">
+        <!-- populated dynamically by game.js -->
+      </div>
+
+      <!-- Canvas Center Viewport -->
+      <div id="canvas-wrapper" class="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden">
+        <canvas id="game-canvas" class="w-full h-full bg-slate-950 block"></canvas>
+        <div class="crt-overlay absolute inset-0 pointer-events-none"></div>
+
+        <!-- 3-2-1 Countdown Overlay -->
+        <div id="overlay-countdown" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center z-30 animate-fade-in">
+          <div id="countdown-number" class="text-6xl sm:text-7xl font-black font-arcade text-amber-400 drop-shadow animate-bounce">3</div>
+          <div class="text-xs uppercase font-bold tracking-widest text-slate-400 mt-1 font-code">GRAB THE KEYS! WIN THE VAULT!</div>
+        </div>
+
+        <!-- Respawn Countdown Overlay -->
+        <div id="overlay-respawn" class="hidden absolute inset-0 bg-rose-950/40 backdrop-blur-xs flex flex-col items-center justify-center z-25 pointer-events-none">
+          <div class="text-2xl font-black font-arcade text-rose-400 animate-pulse">
+            RESPAWNING IN <span id="respawn-seconds">4</span>s...
+          </div>
+          <div class="text-xs text-slate-400 font-code mt-1">Keys dropped at death location!</div>
+        </div>
+
+        <!-- Vault deposit progress overlay -->
+        <div id="overlay-vault-progress" class="hidden absolute bottom-1/3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          <div class="bg-slate-900/95 border-2 border-amber-400 rounded-2xl px-6 py-3 text-center shadow-neon-gold">
+            <div class="text-amber-400 font-black text-sm font-arcade uppercase tracking-wider">🏛️ Depositing Key...</div>
+            <div class="w-full bg-slate-800 rounded-full h-3 mt-2 overflow-hidden">
+              <div id="vault-progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-100" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DUAL JOYSTICK MOBILE CONTROLS -->
+      <div id="mobile-controls-layer" class="absolute inset-0 pointer-events-none z-30 sm:hidden">
+
+        <!-- 1. LEFT STICK: Movement -->
+        <div id="joystick-move-container">
+          <div id="joystick-move-zone" class="w-full h-full bg-slate-900/60 border-2 border-cyan-500/50 rounded-full flex items-center justify-center touch-none shadow-2xl backdrop-blur-xs">
+            <div class="absolute inset-2 rounded-full border border-cyan-500/20"></div>
+            <div id="joystick-move-thumb" class="w-14 h-14 rounded-full bg-gradient-to-tr from-cyan-600 to-cyan-400 border-2 border-white/80 shadow-neon-blue transform translate-x-0 translate-y-0 transition-transform duration-75 flex items-center justify-center">
+              <span class="text-xs font-bold text-slate-950 font-arcade">MOVE</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. CENTER: Reload & Quick Taunt -->
+        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center space-x-3 pointer-events-auto">
+          <button id="btn-mobile-reload" class="w-11 h-11 rounded-2xl bg-slate-800/90 border border-slate-700 text-sm font-bold font-code flex items-center justify-center text-slate-200 active:scale-90 shadow-md">
+            🔄
+          </button>
+          <button id="btn-toggle-taunt" class="w-11 h-11 rounded-2xl bg-slate-800/90 border border-slate-700 text-base flex items-center justify-center active:scale-90 shadow-md">
+            💬
+          </button>
+        </div>
+
+        <!-- 3. DEDICATED BOMB BUTTON -->
+        <div id="btn-bomb-container">
+          <button id="btn-action-bomb" class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-600 to-red-500 border-2 border-amber-300 text-2xl shadow-neon-amber arcade-btn-active active:scale-90 flex items-center justify-center transition-all" title="Drop Bomb / Mine (Space / B)">
+            💣
+          </button>
+        </div>
+
+        <!-- 4. RIGHT STICK: Aim & Auto-Fire -->
+        <div id="joystick-aim-container">
+          <div id="joystick-aim-zone" class="w-full h-full bg-slate-900/60 border-2 border-rose-500/50 rounded-full flex items-center justify-center touch-none shadow-2xl backdrop-blur-xs">
+            <div class="absolute inset-2 rounded-full border border-rose-500/20"></div>
+            <div id="joystick-aim-thumb" class="w-14 h-14 rounded-full bg-gradient-to-tr from-rose-600 to-red-400 border-2 border-white/80 shadow-neon-red transform translate-x-0 translate-y-0 transition-transform duration-75 flex items-center justify-center text-center">
+              <span class="text-[10px] font-black text-white font-arcade leading-tight">AIM &amp;<br>FIRE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Taunt Drawer -->
+      <div id="taunt-menu" class="hidden absolute bottom-24 left-1/2 -translate-x-1/2 flex items-center space-x-2 bg-slate-900/95 border border-slate-700 px-3 py-2 rounded-2xl shadow-2xl backdrop-blur-md z-40">
+        <button data-taunt="💀" class="btn-taunt text-2xl hover:scale-125 active:scale-95 transition">💀</button>
+        <button data-taunt="🗝️" class="btn-taunt text-2xl hover:scale-125 active:scale-95 transition">🗝️</button>
+        <button data-taunt="🤡" class="btn-taunt text-2xl hover:scale-125 active:scale-95 transition">🤡</button>
+        <button data-taunt="🏆" class="btn-taunt text-2xl hover:scale-125 active:scale-95 transition">🏆</button>
+        <button data-taunt="👋" class="btn-taunt text-2xl hover:scale-125 active:scale-95 transition">👋</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= ROUND END & AWARDS CEREMONY MODAL ================= -->
+  <div id="modal-awards" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+    <div class="w-full max-w-md bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-5 shadow-2xl text-center relative overflow-hidden">
+      <div class="absolute -top-16 left-1/2 -translate-x-1/2 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="w-14 h-14 mx-auto mb-2 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl shadow-neon-gold">
+        🏆
+      </div>
+      <h2 id="awards-winner-title" class="text-xl sm:text-2xl font-black font-arcade text-white tracking-tight">
+        VAULT SECURED!
+      </h2>
+      <p id="awards-winner-subtitle" class="text-xs text-slate-400 font-code mt-0.5">
+        The heist is complete.
+      </p>
+
+      <!-- Combat & Heist Awards -->
+      <div class="my-4 grid grid-cols-2 gap-2 text-left">
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
+          <div class="text-[9px] uppercase font-bold text-amber-400 font-code flex items-center gap-1">
+            <span>🗝️</span> MASTER THIEF
+          </div>
+          <div id="award-mvp-name" class="font-bold text-white text-xs truncate mt-0.5">---</div>
+          <div id="award-mvp-desc" class="text-[9px] text-slate-500 font-mono">0 keys deposited</div>
+        </div>
+
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
+          <div class="text-[9px] uppercase font-bold text-emerald-400 font-code flex items-center gap-1">
+            <span>🎯</span> SHARPSHOOTER
+          </div>
+          <div id="award-sharpshooter-name" class="font-bold text-white text-xs truncate mt-0.5">---</div>
+          <div id="award-sharpshooter-desc" class="text-[9px] text-slate-500 font-mono">Best accuracy</div>
+        </div>
+
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
+          <div class="text-[9px] uppercase font-bold text-rose-400 font-code flex items-center gap-1">
+            <span>💀</span> ELIMINATOR
+          </div>
+          <div id="award-spray-name" class="font-bold text-white text-xs truncate mt-0.5">---</div>
+          <div id="award-spray-desc" class="text-[9px] text-slate-500 font-mono">Most kills</div>
+        </div>
+
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
+          <div class="text-[9px] uppercase font-bold text-purple-400 font-code flex items-center gap-1">
+            <span>🛡️</span> COMBAT TANK
+          </div>
+          <div id="award-tank-name" class="font-bold text-white text-xs truncate mt-0.5">---</div>
+          <div id="award-tank-desc" class="text-[9px] text-slate-500 font-mono">Most damage absorbed</div>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <button id="btn-rematch" class="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-white font-black text-base tracking-wider uppercase font-arcade shadow-lg shadow-amber-950 border-b-4 border-amber-800 arcade-btn-active transition">
+          🔄 NEXT HEIST
+        </button>
+        <button id="btn-return-lobby" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider font-code transition">
+          Return to Briefing
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SETTINGS MODAL ================= -->
+  <div id="modal-settings" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+    <div class="w-full max-w-md bg-slate-900 border-2 border-slate-700 rounded-3xl p-5 shadow-2xl relative">
+      <button id="btn-close-settings" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">✕</button>
+
+      <div class="flex items-center space-x-2 mb-3">
+        <span class="text-xl">⚙️</span>
+        <div>
+          <h3 class="text-base font-black font-arcade text-white">CONTROLS &amp; FIREBASE CONFIG</h3>
+          <p class="text-[10px] text-slate-400 font-code">Adjust vibration, credentials, or offline mode</p>
+        </div>
+      </div>
+
+      <!-- Vibration Toggle -->
+      <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 mb-3 flex items-center justify-between">
+        <div>
+          <div class="text-xs font-bold text-white">Haptic Vibration</div>
+          <div class="text-[10px] text-slate-400">Light 5ms pulse only on taking damage</div>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input id="toggle-vibration" type="checkbox" class="sr-only peer">
+          <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+        </label>
+      </div>
+
+      <div class="space-y-2 text-xs font-code">
+        <div>
+          <label class="block text-slate-400 mb-0.5">Firebase API Key</label>
+          <input id="cfg-apiKey" type="text" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-white outline-none focus:border-amber-400">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-0.5">Database URL</label>
+          <input id="cfg-databaseURL" type="text" placeholder="https://your-app-default-rtdb.firebaseio.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-white outline-none focus:border-amber-400">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-0.5">Project ID</label>
+          <input id="cfg-projectId" type="text" placeholder="your-project-id" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-white outline-none focus:border-amber-400">
+        </div>
+      </div>
+
+      <div class="mt-4 space-y-2">
+        <button id="btn-save-settings" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider font-arcade transition">
+          💾 Save &amp; Connect
+        </button>
+        <button id="btn-demo-mode" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs font-code transition">
+          🎮 Launch Offline Bots / Simulation Mode
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Scripts (Versioned to bust browser cache) -->
+  <script src="net.js?v=2.3"></script>
+  <script src="sim.js?v=2.3"></script>
+  <script src="game.js?v=2.3"></script>
+</body>
+</html>
